@@ -127,13 +127,10 @@ def train_model(encoder_optimizer, decoder_optimizer, encoder, decoder, loss_fun
 			decoder_optimizer.step()
 
 		epoch_loss = running_loss / total
-		loss_hist[phase].append(epoch_loss)
-		print("epoch {} {} loss = {}, time = {}".format(epoch, phase, epoch_loss,
+		loss_hist['train'].append(epoch_loss)
+		print("epoch {} loss = {}, time = {}".format(epoch,  epoch_loss,
 																	   time.time() - start))
-#             if epoch%train_bleu_every ==0:
-#                 train_loss, train_bleu_score = validation(encoder,decoder, dataloader['train'],loss_fun, target_lang_obj,max_len,m_type)
-#                 bleu_hist['train'].append(train_bleu_score)
-#                 print("Train BLEU = ", train_bleu_score)
+
 		if epoch%val_every == 0:
 			val_loss, val_bleu_score = validation(encoder,decoder, dataloader['val'], loss_fun, target_lang_obj ,max_len,m_type)
 			loss_hist['val'].append(val_loss)
