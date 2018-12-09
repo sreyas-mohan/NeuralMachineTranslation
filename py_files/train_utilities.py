@@ -20,73 +20,120 @@ def convert_idx_2_sent(tensor, lang_obj):
 			word_list.append(lang_obj.index2word[i.item()])
 	return (' ').join(word_list)
 
-def validation(encoder, decoder, dataloader, loss_fun, lang_obj, max_len, m_type):
-	encoder.train(False)
-	decoder.train(False)
+
+def validation_function(encoder, decoder, val_dataloader, lang_en,m_type, verbose = False):
+	encoder.eval()
+	decoder.eval()
 	pred_corpus = []
 	true_corpus = []
 	running_loss = 0
 	running_total = 0
 	bl = BLEU_SCORE()
-	for data in dataloader:
+	for data in val_dataloader:
 		encoder_i = data[0].to(device)
-		decoder_i = data[1].to(device)
-
+		src_len = data[2].to(device)
 		bs,sl = encoder_i.size()[:2]
-
-		out, hidden = encode_decode(encoder,decoder,encoder_i,decoder_i,max_len, m_type, rand_num = 0)
-		loss = loss_fun(out.float(), decoder_i.long())
-		running_loss += loss.item() * bs
-		running_total += bs
-		pred = torch.max(out,dim = 1)[1]
-
-		for t,p in zip(data[1],pred):
-			t,p = convert_idx_2_sent(t, lang_obj), convert_idx_2_sent(p,lang_obj)
-			true_corpus.append(t)
-			pred_corpus.append(p)
-	score = bl.corpus_bleu(pred_corpus,[true_corpus],lowercase=True)[0]
-	return running_loss/running_total, score
-
-
-def encode_decode(encoder, decoder, data_en, data_de, max_len, m_type, rand_num = 0.5):
-	use_teacher_forcing = True if random.random() < rand_num else False
-	bss = data_en.size(0)
-	en_h = encoder.initHidden(bss)
-	en_out,en_hid = encoder(data_en,en_h)
-	
-	decoder_hidden = en_hid
-	decoder_input = torch.tensor([[SOS_token]]*bss).to(device)
-
-	if use_teacher_forcing:
+		en_out,en_hid,en_c = encoder(encoder_i,src_len)
+		max_src_len_batch = max(src_len).item()
+		prev_hiddens = en_hid
+		prev_cs = en_c
+		decoder_input = torch.tensor([[SOS_token]]*bs).to(device)
+		prev_output = torch.zeros((bs, en_out.size(-1))).to(device)
 		d_out = []
-		for i in range(max_len):
-			if m_type=="attention":
-				decoder_output,decoder_hidden = decoder(decoder_input,decoder_hidden,en_out)
-			else:
-				decoder_output,decoder_hidden = decoder(decoder_input,decoder_hidden)
-			d_out.append(decoder_output.unsqueeze(-1))
-			decoder_input = data_de[:,i].view(-1,1)
-		d_hid = decoder_hidden
-		d_out = torch.cat(d_out,dim=-1)
-	else:
-		d_out = []
-		for i in range(max_len):
-			if m_type == "attention":
-				error('not implemented!')
-				decoder_output,decoder_hidden = decoder(decoder_input,decoder_hidden,en_out)
-			else:
-				decoder_output, decoder_hidden = decoder(decoder_input,decoder_hidden)
-			d_out.append(decoder_output.unsqueeze(-1))
-			topv, topi = decoder_output.topk(1)
+		for i in range(sl*2):
+			out_vocab, prev_output,prev_hiddens, prev_cs, attention_score = decoder(decoder_input,prev_output, \
+																					prev_hiddens,prev_cs, en_out,\
+																					src_len)
+			topv, topi = out_vocab.topk(1)
+#             decoder_input = topi.squeeze().detach().view(-1,1)
+			d_out.append(topi.item())
 			decoder_input = topi.squeeze().detach().view(-1,1)
-		d_hid = decoder_hidden
+			if topi.item() == EOS_token:
+				break
+		
+		true_corpus.append(data[-1])
+		pred_sent = convert_id_list_2_sent(d_out,lang_en)
+		pred_corpus.append(pred_sent)
+		if verbose:
+			print("True Sentence:",data[-1])
+			print("Pred Sentence:", pred_sent)
+			print('-*'*50)
+	score = BLEU_SCORE.corpus_bleu(pred_corpus,[true_corpus],lowercase=True)[0]
+
+	return score
+
+
+def encode_decode(encoder, decoder, data_en, data_de,
+					src_len,tar_len,rand_num = 0.95, val = False):
+	
+	if not val:
+		use_teacher_forcing = True if random.random() < rand_num else False
+
+		bss = data_en.size(0)
+		en_out, en_hid, en_c = encoder(data_en, src_len)
+		max_src_len_batch = max(src_len).item()
+		max_tar_len_batch = max(tar_len).item()
+		prev_hiddens = en_hid
+		prev_cs = en_c
+		decoder_input = torch.tensor([[SOS_token]]*bss).to(device)
+		prev_output = torch.zeros((bss, en_out.size(-1))).to(device)
+
+		if use_teacher_forcing:
+			d_out = []
+			for i in range(max_tar_len_batch):
+				out_vocab, prev_output,prev_hiddens, prev_cs, attention_score = decoder(decoder_input,prev_output, \
+																						prev_hiddens,prev_cs, en_out,\
+																						src_len)
+				d_out.append(out_vocab.unsqueeze(-1))
+				decoder_input = data_de[:,i].view(-1,1)
+			d_out = torch.cat(d_out,dim=-1)
+
+		else:
+			d_out = []
+			for i in range(max_tar_len_batch):
+				out_vocab, prev_output,prev_hiddens, prev_cs, attention_score = decoder(decoder_input,prev_output, \
+																						prev_hiddens,prev_cs, en_out,\
+																						src_len)
+				d_out.append(out_vocab.unsqueeze(-1))
+				topv, topi = out_vocab.topk(1)
+				decoder_input = topi.squeeze().detach().view(-1,1)
+
+			d_out = torch.cat(d_out,dim=-1)
+
+		return d_out
+
+
+	else:
+
+
+		encoder.eval()
+		decoder.eval()
+		bss = data_en.size(0)
+		en_out,en_hid,en_c = encoder(data_en, src_len)
+		max_src_len_batch = max(src_len).item()
+		max_tar_len_batch = max(tar_len).item()
+		prev_hiddens = en_hid
+		prev_cs = en_c
+		decoder_input = torch.tensor([[SOS_token]]*bss).to(device)
+		prev_output = torch.zeros((bss, en_out.size(-1))).to(device)
+		d_out = []
+		for i in range(max_tar_len_batch):
+			out_vocab, prev_output,prev_hiddens, prev_cs, attention_score = decoder(decoder_input,prev_output, \
+																					prev_hiddens,prev_cs, en_out,\
+																					src_len)
+			d_out.append(out_vocab.unsqueeze(-1))
+			topv, topi = out_vocab.topk(1)
+			decoder_input = topi.squeeze().detach().view(-1,1)
 		d_out = torch.cat(d_out,dim=-1)
-	return d_out, d_hid
+		return d_out
 
 
 
-def train_model(encoder_optimizer, decoder_optimizer, encoder, decoder, loss_fun,max_len, m_type, dataloader, target_lang_obj,
-				num_epochs=60, val_every = 1, train_bleu_every = 10):
+
+def train_model(encoder_optimizer, decoder_optimizer, encoder, decoder, loss_fun,m_type, dataloader, en_lang,\
+				num_epochs=60, val_every = 1, train_bleu_every = 10, clip = 0.1, rm = 0.8, enc_scheduler = None,\
+			   dec_scheduler = None):
+
 	best_score = 0
 	best_bleu = 0
 	loss_hist = {'train': [], 'val': []}
@@ -94,61 +141,73 @@ def train_model(encoder_optimizer, decoder_optimizer, encoder, decoder, loss_fun
 	best_encoder_wts = None
 	best_decoder_wts = None
 
+	phases = ['train','val']
+
 	for epoch in range(num_epochs):
 
-		start = time.time()
-		total = 0
-		top1_correct = 0
-		running_loss = 0
-		running_total = 0
+		for ex, phase in enumerate(phases):
+			start = time.time()
+			total = 0
+			top1_correct = 0
+			running_loss = 0
+			running_total = 0
 
+			if phase == 'train':
+				encoder.train()
+				decoder.train()
+			else:
+				encoder.eval()
+				decoder.eval()
 
-		encoder.train(True)
-		decoder.train(True)
+			for data in dataloader[phase]:
+				encoder_optimizer.zero_grad()
+				decoder_optimizer.zero_grad()
 
-		for data in dataloader['train']:
-			encoder_optimizer.zero_grad()
-			decoder_optimizer.zero_grad()
+				encoder_i = data[0].to(device)
+				decoder_i = data[1].to(device)
+				src_len = data[2].to(device)
+				tar_len = data[3].to(device)
 
-			encoder_i = data[0].to(device)
-			decoder_i = data[1].to(device)
-							
-			out, hidden = encode_decode(encoder,decoder, encoder_i, decoder_i,max_len, m_type)
+				if phase == 'val':                
+					out = encode_decode(encoder,decoder,encoder_i,decoder_i,src_len,tar_len, rand_num=rm, val = True )
+				else:
+					out = encode_decode(encoder,decoder,encoder_i,decoder_i,src_len,tar_len, rand_num=rm, val = False )
+				N = decoder_i.size(0)
 
-			loss = loss_fun(out.float(), decoder_i.long())
+				loss = loss_fun(out.float(), decoder_i.long())
+				running_loss += loss.item() * N
+				
+				total += N
+				if phase == 'train':
+					loss.backward()
+					torch.nn.utils.clip_grad_norm_(encoder.parameters(), clip)
+					torch.nn.utils.clip_grad_norm_(decoder.parameters(), clip)
+					encoder_optimizer.step()
+					decoder_optimizer.step()
+					
+			epoch_loss = running_loss / total 
+			loss_hist[phase].append(epoch_loss)
+			print("epoch {} {} loss = {}, time = {}".format(epoch, phase, epoch_loss,
+																		   time.time() - start))
+		if (enc_scheduler is not None) and (dec_scheduler is not None):
+			enc_scheduler.step(epoch_loss)
+			dec_scheduler.step(epoch_loss)
 
-			N = decoder_i.size(0)
-			running_loss += loss.item() * N
-			
-			total += N
-
-			loss.backward()
-			encoder_optimizer.step()
-			decoder_optimizer.step()
-
-		epoch_loss = running_loss / total
-		loss_hist[phase].append(epoch_loss)
-		print("epoch {} {} loss = {}, time = {}".format(epoch, phase, epoch_loss,
-																	   time.time() - start))
-#             if epoch%train_bleu_every ==0:
-#                 train_loss, train_bleu_score = validation(encoder,decoder, dataloader['train'],loss_fun, target_lang_obj,max_len,m_type)
-#                 bleu_hist['train'].append(train_bleu_score)
-#                 print("Train BLEU = ", train_bleu_score)
 		if epoch%val_every == 0:
-			val_loss, val_bleu_score = validation(encoder,decoder, dataloader['val'], loss_fun, target_lang_obj ,max_len,m_type)
-			loss_hist['val'].append(val_loss)
+			val_bleu_score = validation_function(encoder,decoder, dataloader['val'], en_lang, m_type)
 			bleu_hist['val'].append(val_bleu_score)
-			print("val loss = ", val_loss)
-			print("val BLEU = ", val_bleu_score)
+			print("validation BLEU = ", val_bleu_score)
 			if val_bleu_score > best_bleu:
 				best_bleu = val_bleu_score
 				best_encoder_wts = encoder.state_dict()
 				best_decoder_wts = decoder.state_dict()
-		print('#'*50)
+
+		print('='*50)
 
 	encoder.load_state_dict(best_encoder_wts)
 	decoder.load_state_dict(best_decoder_wts)
 	print("Training completed. Best BLEU is {}".format(best_bleu))
-	return encoder,decoder,loss_hist, bleu_hist
+
+	return encoder,decoder,loss_hist,bleu_hist
 
 

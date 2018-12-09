@@ -86,7 +86,7 @@ def load_or_create_language_obj(source_name, source_lang_obj_path, source_data):
 
 
 def load_language_pairs(source_path, target_path, source_name = 'en', target_name = 'vi',
-                        lang_obj_path = '.', Max_Len = 10):
+                        lang_obj_path = '.'):
     source = read_dataset(source_path);
     target = read_dataset(target_path);
     
@@ -103,22 +103,23 @@ def load_language_pairs(source_path, target_path, source_name = 'en', target_nam
     
     main_df = token2index_dataset(main_df, source_lang_obj, target_lang_obj);
     
-    main_df = main_df[ np.logical_and( np.logical_and(main_df['source_len'] >=2, main_df['target_len'] >=2) , 
-                                  np.logical_and( main_df['source_len'] <= Max_Len, main_df['target_len'] <= Max_Len) ) ];
+    # main_df = main_df[ np.logical_and( np.logical_and(main_df['source_len'] >=2, main_df['target_len'] >=2) , 
+    #                               np.logical_and( main_df['source_len'] <= Max_Len, main_df['target_len'] <= Max_Len) ) ];
+
+    main_df =  main_df[  np.logical_and(main_df['source_len'] >=2, main_df['target_len'] >=2 ) ]
     
     return main_df, source_lang_obj, target_lang_obj
     
 
 class LanguagePair(Dataset):
     def __init__(self, source_name, target_name, source_path, target_path, 
-                    lang_obj_path, max_len):
+                    lang_obj_path):
         
         self.source_name = source_name;
         self.target_name = target_name; 
         
         self.main_df, self.source_lang_obj, self.target_lang_obj = load_language_pairs(source_path, target_path, 
-                                                                              source_name, target_name, lang_obj_path,
-                                                                              max_len);
+                                                                              source_name, target_name, lang_obj_path);
         
     def __len__(self):
         return len( self.main_df )
@@ -157,3 +158,9 @@ def vocab_collate_func(batch, MAX_LEN):
         
     return [torch.from_numpy(np.array(source_data)), torch.from_numpy(np.array(target_data)),
             torch.from_numpy(np.array(source_len)), torch.from_numpy(np.array(target_len))]
+
+
+
+def vocab_collate_func_val(batch):
+    return [torch.from_numpy(np.array(batch[0][0])).unsqueeze(0), torch.from_numpy(np.array(batch[0][1])).unsqueeze(0),
+            torch.from_numpy(np.array(batch[0][2])).unsqueeze(0), torch.from_numpy(np.array(batch[0][3])).unsqueeze(0),batch[0][4]]
