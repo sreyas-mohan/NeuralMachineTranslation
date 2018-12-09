@@ -112,7 +112,7 @@ class Attention_Module(nn.Module):
         
         x: bsz x output_dim
         attn_score: bsz x sq_len'''
-        
+
         x = self.l1(hidden)
         att_score = (encoder_outs.transpose(0,1) * x.unsqueeze(0)).sum(dim = 2)
         seq_mask = sequence_mask(src_lens, max_len = max(src_lens).item()).transpose(0,1)
@@ -124,28 +124,54 @@ class Attention_Module(nn.Module):
         return x, attn_scores
 
 
-class DecoderRNN(nn.Module):
-	def __init__(self, hidden_size, output_size, bi):
-		super(DecoderRNN, self).__init__()
-		self.bi = bi
-		if self.bi:
-			self.mul=2
-		else:
-			self.mul=1
-		self.hidden_size = hidden_size
+class AttentionDecoderRNN(nn.Module):
+    def __init__(self, output_size, embed_dim, hidden_size, n_layers = 1, attention = True):
+        super(AttentionDecoderRNN, self).__init__()
+        self.hidden_size = hidden_size
+        encoder_output_size = hidden_size
+        self.embedding = Embedding(output_size, embed_dim, PAD_IDX)
+        self.dropout = nn.Dropout(p=0.1)
+        self.n_layers = n_layers
+        self.att_layer = Attention_Module(self.hidden_size, encoder_output_size) if attention else None
+        self.layers = nn.ModuleList([
+            LSTMCell(
+                input_size=self.hidden_size + embed_dim if ((layer == 0) and attention) else embed_dim if layer == 0 else hidden_size,
+                hidden_size=hidden_size,
+            )
+            for layer in range(self.n_layers)
+        ])
+        self.fc_out = nn.Linear(self.hidden_size, output_size)
+        self.softmax = nn.LogSoftmax(dim=1)
+        
+    def forward(self, dec_input,context_vector, prev_hiddens,prev_cs,encoder_outputs,src_len):
+        bsz = dec_input.size(0)
+        output = self.embedding(dec_input)
+        output = self.dropout(output)
 
-		self.embedding = nn.Embedding(output_size, hidden_size)
-		self.gru = nn.GRU(hidden_size, hidden_size,batch_first=True, bidirectional=self.bi)
-		self.out = nn.Linear(self.mul * hidden_size, output_size)
-		self.softmax = nn.LogSoftmax(dim=1)
+        if self.att_layer is not None:
+            cated_input = torch.cat([output.squeeze(1),context_vector], dim = 1)
+        else:
+            cated_input = output.squeeze(1)
 
-	def forward(self, input, hidden):
-		output = self.embedding(input)
-		output = F.relu(output)
-		output, hidden = self.gru(output, hidden)
-		output = self.softmax(self.out(output).squeeze(dim=1))
+        new_hiddens = []
+        new_cs = []
+        for i, rnn in enumerate(self.layers):
+            hidden, c = rnn(cated_input, (prev_hiddens[i], prev_cs[i]))
+            cated_input = self.dropout(hidden)
+            new_hiddens.append(hidden.unsqueeze(0))
+            new_cs.append(c.unsqueeze(0))
+        new_hiddens = torch.cat(new_hiddens, dim = 0)
+        new_cs = torch.cat(new_cs, dim = 0)
 
-		return output, hidden
+        # apply attention using the last layer's hidden state
+        if self.att_layer is not None:
+            out, attn_score = self.att_layer(hidden, encoder_outputs, src_len)
+        else:
+            out = hidden
+            attn_score = None
+        context_vec = out
+        out = self.dropout(out)
+        out_vocab = self.softmax(self.fc_out(out))
 
-	def initHidden(self):
-		return torch.zeros(self.mul, bs, self.hidden_size).to(device)
+        return out_vocab, context_vec, new_hiddens, new_cs, attn_score
+    
