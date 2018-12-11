@@ -14,153 +14,164 @@ PAD_IDX = global_variables.PAD_IDX
 
 
 class Lang:
-    def __init__(self, name):
-        self.name = name
-        self.word2index = {}
-        self.word2count = {}
-        self.index2word = [None]*4
-        self.index2word[SOS_token] = 'SOS'
-        self.index2word[EOS_token] = 'EOS'
-        self.index2word[UNK_IDX] = 'UNK'
-        self.index2word[PAD_IDX] = 'PAD'
-        self.n_words = 4  # Count SOS and EOS
+	def __init__(self, name):
+		self.name = name
+		self.word2index = {}
+		self.word2count = {}
+		self.index2word = [None]*4
+		self.index2word[SOS_token] = 'SOS'
+		self.index2word[EOS_token] = 'EOS'
+		self.index2word[UNK_IDX] = 'UNK'
+		self.index2word[PAD_IDX] = 'PAD'
+		self.n_words = 4  # Count SOS and EOS
 
-    def addSentence(self, sentence):
-        for word in sentence.split(' '):
-            self.addWord(word)
+	def addSentence(self, sentence):
+		for word in sentence.split(' '):
+			self.addWord(word)
 
-    def addWord(self, word):
-        if word not in self.word2index:
-            self.word2index[word] = self.n_words
-            self.word2count[word] = 1
-            self.index2word.append(word)
-            self.n_words += 1
-        else:
-            self.word2count[word] += 1
+	def addWord(self, word):
+		if word not in self.word2index:
+			self.word2index[word] = self.n_words
+			self.word2count[word] = 1
+			self.index2word.append(word)
+			self.n_words += 1
+		else:
+			self.word2count[word] += 1
 
 
 def read_dataset(file):
-    f = open(file)
-    list_l = []
-    for line in f:
-        list_l.append(line.strip())
-    df = pd.DataFrame()
-    df['data'] = list_l
-    return df
+	f = open(file)
+	list_l = []
+	for line in f:
+		list_l.append(line.strip())
+	df = pd.DataFrame()
+	df['data'] = list_l
+	return df
 
 
 def token2index_dataset(df, source_lang_obj, target_lang_obj):
-    for lan in ['source','target']:
-        indices_data = []
-        if lan=='source':
-            lang_obj = source_lang_obj
-        else:
-            lang_obj = target_lang_obj
-            
-        for tokens in df[lan+'_tokenized']:
-            
-            index_list = [lang_obj.word2index[token] if token in lang_obj.word2index else UNK_IDX for token in tokens]
-            index_list.append(EOS_token)
-            indices_data.append(index_list)
-            
-        df[lan+'_indized'] = indices_data
-        
-    return df
+	for lan in ['source','target']:
+		indices_data = []
+		if lan=='source':
+			lang_obj = source_lang_obj
+		else:
+			lang_obj = target_lang_obj
+			
+		for tokens in df[lan+'_tokenized']:
+			
+			index_list = [lang_obj.word2index[token] if token in lang_obj.word2index else UNK_IDX for token in tokens]
+			index_list.append(EOS_token)
+			indices_data.append(index_list)
+			
+		df[lan+'_indized'] = indices_data
+		
+	return df
 
 def load_or_create_language_obj(source_name, source_lang_obj_path, source_data):
-    
-    if not os.path.exists(source_lang_obj_path):
-        os.makedirs(source_lang_obj_path)
-    
-    full_file_path = os.path.join(source_lang_obj_path, source_name+'_lang_obj.p')
-    
-    if os.path.isfile(full_file_path):
-        source_lang_obj = pickle.load( open( full_file_path, "rb" ) );
-    else:
-        source_lang_obj = Lang(source_name);
-        for line in source_data:
-            source_lang_obj.addSentence(line);
-        pickle.dump( source_lang_obj, open(full_file_path , "wb" ) )
-        
-    return source_lang_obj
+	
+	if not os.path.exists(source_lang_obj_path):
+		os.makedirs(source_lang_obj_path)
+	
+	full_file_path = os.path.join(source_lang_obj_path, source_name+'_lang_obj.p')
+	
+	if os.path.isfile(full_file_path):
+		source_lang_obj = pickle.load( open( full_file_path, "rb" ) );
+	else:
+		source_lang_obj = Lang(source_name);
+		for line in source_data:
+			source_lang_obj.addSentence(line);
+		pickle.dump( source_lang_obj, open(full_file_path , "wb" ) )
+		
+	return source_lang_obj
 
 
 def load_language_pairs(source_path, target_path, source_name = 'en', target_name = 'vi',
-                        lang_obj_path = '.'):
-    source = read_dataset(source_path);
-    target = read_dataset(target_path);
-    
-    main_df = pd.DataFrame();
-    main_df['source_data'] = source['data'];
-    main_df['target_data'] = target['data'];
-    
-    source_lang_obj = load_or_create_language_obj(source_name, lang_obj_path, main_df['source_data']);
-    target_lang_obj = load_or_create_language_obj(target_name, lang_obj_path, main_df['target_data']);
-    
-    for x in ['source', 'target']:
-        main_df[x+'_tokenized'] = main_df[x + "_data"].apply(lambda x:x.lower().split() );
-        main_df[x+'_len'] = main_df[x+'_tokenized'].apply(lambda x: len(x)+1) #+1 for EOS
-    
-    main_df = token2index_dataset(main_df, source_lang_obj, target_lang_obj);
-    
-    # main_df = main_df[ np.logical_and( np.logical_and(main_df['source_len'] >=2, main_df['target_len'] >=2) , 
-    #                               np.logical_and( main_df['source_len'] <= Max_Len, main_df['target_len'] <= Max_Len) ) ];
+						lang_obj_path = '.'):
+	source = read_dataset(source_path);
+	target = read_dataset(target_path);
+	
+	main_df = pd.DataFrame();
+	main_df['source_data'] = source['data'];
+	main_df['target_data'] = target['data'];
+	
+	source_lang_obj = load_or_create_language_obj(source_name, lang_obj_path, main_df['source_data']);
+	target_lang_obj = load_or_create_language_obj(target_name, lang_obj_path, main_df['target_data']);
+	
+	for x in ['source', 'target']:
+		main_df[x+'_tokenized'] = main_df[x + "_data"].apply(lambda x:x.lower().split() );
+		main_df[x+'_len'] = main_df[x+'_tokenized'].apply(lambda x: len(x)+1) #+1 for EOS
+	
+	main_df = token2index_dataset(main_df, source_lang_obj, target_lang_obj);
+	
+	# main_df = main_df[ np.logical_and( np.logical_and(main_df['source_len'] >=2, main_df['target_len'] >=2) , 
+	#                               np.logical_and( main_df['source_len'] <= Max_Len, main_df['target_len'] <= Max_Len) ) ];
 
-    main_df =  main_df[  np.logical_and(main_df['source_len'] >=2, main_df['target_len'] >=2 ) ]
-    
-    return main_df, source_lang_obj, target_lang_obj
-    
+	main_df =  main_df[  np.logical_and(main_df['source_len'] >=2, main_df['target_len'] >=2 ) ]
+	
+	return main_df, source_lang_obj, target_lang_obj
+	
 
 class LanguagePair(Dataset):
-    def __init__(self, source_name, target_name, source_path, target_path, 
-                    lang_obj_path):
-        
-        self.source_name = source_name;
-        self.target_name = target_name; 
-        
-        self.main_df, self.source_lang_obj, self.target_lang_obj = load_language_pairs(source_path, target_path, 
-                                                                              source_name, target_name, lang_obj_path);
-        
-    def __len__(self):
-        return len( self.main_df )
-    
-    def __getitem__(self, idx):
-        
-        return [self.main_df.iloc[idx]['source_indized'], self.main_df.iloc[idx]['target_indized'], 
-                    self.main_df.iloc[idx]['source_len'], self.main_df.iloc[idx]['target_len'] ]
+	def __init__(self, source_name, target_name, source_path, target_path, 
+					lang_obj_path, val = False):
+		
+		self.source_name = source_name;
+		self.target_name = target_name;
+		self.val = val;
+		
+		self.main_df, self.source_lang_obj, self.target_lang_obj = load_language_pairs(source_path, target_path, 
+																			  source_name, target_name, lang_obj_path);
+		
+	def __len__(self):
+		return len( self.main_df )
+	
+	def __getitem__(self, idx):
+		
+		return_list = [self.main_df.iloc[idx]['source_indized'], self.main_df.iloc[idx]['target_indized'], 
+					self.main_df.iloc[idx]['source_len'], self.main_df.iloc[idx]['target_len'] ]
+		if self.val:
+			return_list.append(self.main_df.iloc[idx]['target_data'])
+		
+		return return_list 
 
 
 def vocab_collate_func(batch, MAX_LEN):
-    source_data = []
-    target_data = []
-    source_len = []
-    target_len = []
+	source_data = []
+	target_data = []
+	source_len = []
+	target_len = []
 
-    for datum in batch:
-        source_len.append(datum[2])
-        target_len.append(datum[3])
-    # padding
-    for datum in batch:
-        if datum[2]>MAX_LEN:
-            padded_vec_s1 = np.array(datum[0])[:MAX_LEN]
-        else:
-            padded_vec_s1 = np.pad(np.array(datum[0]),
-                                pad_width=((0,MAX_LEN - datum[2])),
-                                mode="constant", constant_values=PAD_IDX)
-        if datum[3]>MAX_LEN:
-            padded_vec_s2 = np.array(datum[1])[:MAX_LEN]
-        else:
-            padded_vec_s2 = np.pad(np.array(datum[1]),
-                                pad_width=((0,MAX_LEN - datum[3])),
-                                mode="constant", constant_values=PAD_IDX)
-        source_data.append(padded_vec_s1)
-        target_data.append(padded_vec_s2)
-        
-    return [torch.from_numpy(np.array(source_data)), torch.from_numpy(np.array(target_data)),
-            torch.from_numpy(np.array(source_len)), torch.from_numpy(np.array(target_len))]
+	for datum in batch:
+		source_len.append(datum[2])
+		target_len.append(datum[3])
+
+	MAX_LEN_Source = np.min([ np.max(source_len), MAX_LEN ]);
+	MAX_LEN_Target = np.min([np.max(target_len), MAX_LEN]);
+
+	source_len = np.clip(source_len, a_min = None, a_max = MAX_LEN_Source )
+	target_len = np.clip(target_len, a_min = None, a_max = MAX_LEN_Target )
+	# padding
+	for datum in batch:
+		if datum[2]>MAX_LEN_Source:
+			padded_vec_s1 = np.array(datum[0])[:MAX_LEN_Source]
+		else:
+			padded_vec_s1 = np.pad(np.array(datum[0]),
+								pad_width=((0,MAX_LEN_Source - datum[2])),
+								mode="constant", constant_values=PAD_IDX)
+		if datum[3]>MAX_LEN_Target:
+			padded_vec_s2 = np.array(datum[1])[:MAX_LEN_Target]
+		else:
+			padded_vec_s2 = np.pad(np.array(datum[1]),
+								pad_width=((0,MAX_LEN_Target - datum[3])),
+								mode="constant", constant_values=PAD_IDX)
+		source_data.append(padded_vec_s1)
+		target_data.append(padded_vec_s2)
+		
+	return [torch.from_numpy(np.array(source_data)), torch.from_numpy(np.array(target_data)),
+			torch.from_numpy(np.array(source_len)), torch.from_numpy(np.array(target_len))]
 
 
 
 def vocab_collate_func_val(batch):
-    return [torch.from_numpy(np.array(batch[0][0])).unsqueeze(0), torch.from_numpy(np.array(batch[0][1])).unsqueeze(0),
-            torch.from_numpy(np.array(batch[0][2])).unsqueeze(0), torch.from_numpy(np.array(batch[0][3])).unsqueeze(0),batch[0][4]]
+	return [torch.from_numpy(np.array(batch[0][0])).unsqueeze(0), torch.from_numpy(np.array(batch[0][1])).unsqueeze(0),
+			torch.from_numpy(np.array(batch[0][2])).unsqueeze(0), torch.from_numpy(np.array(batch[0][3])).unsqueeze(0),batch[0][4]]

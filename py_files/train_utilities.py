@@ -13,12 +13,17 @@ PAD_IDX = global_variables.PAD_IDX
 
 device = global_variables.device;
 
-def convert_idx_2_sent(tensor, lang_obj):
-	word_list = []
-	for i in tensor:
-		if i.item() not in set([ PAD_IDX, EOS_token, SOS_token]):
-			word_list.append(lang_obj.index2word[i.item()])
-	return (' ').join(word_list)
+def convert_id_list_2_sent(list_idx, lang_obj):
+    word_list = []
+    if type(list_idx) == list:
+        for i in list_idx:
+            if i not in set([EOS_token]):
+                word_list.append(lang_obj.index2word[i])
+    else:
+        for i in list_idx:
+            if i.item() not in set([EOS_token,SOS_token,PAD_IDX]):
+                word_list.append(lang_obj.index2word[i.item()])
+    return (' ').join(word_list)
 
 
 def validation_function(encoder, decoder, val_dataloader, lang_en,m_type, verbose = False):
@@ -58,7 +63,7 @@ def validation_function(encoder, decoder, val_dataloader, lang_en,m_type, verbos
 			print("True Sentence:",data[-1])
 			print("Pred Sentence:", pred_sent)
 			print('-*'*50)
-	score = BLEU_SCORE.corpus_bleu(pred_corpus,[true_corpus],lowercase=True)[0]
+	score = bl.corpus_bleu(pred_corpus,[true_corpus],lowercase=True)[0]
 
 	return score
 
@@ -73,6 +78,8 @@ def encode_decode(encoder, decoder, data_en, data_de,
 		en_out, en_hid, en_c = encoder(data_en, src_len)
 		max_src_len_batch = max(src_len).item()
 		max_tar_len_batch = max(tar_len).item()
+		
+# 		print(max_src_len_batch, max_tar_len_batch)
 		prev_hiddens = en_hid
 		prev_cs = en_c
 		decoder_input = torch.tensor([[SOS_token]]*bss).to(device)
@@ -172,9 +179,12 @@ def train_model(encoder_optimizer, decoder_optimizer, encoder, decoder, loss_fun
 					out = encode_decode(encoder,decoder,encoder_i,decoder_i,src_len,tar_len, rand_num=rm, val = True )
 				else:
 					out = encode_decode(encoder,decoder,encoder_i,decoder_i,src_len,tar_len, rand_num=rm, val = False )
+					
 				N = decoder_i.size(0)
 
-				loss = loss_fun(out.float(), decoder_i.long())
+# 				print(out.shape)
+# 				print(decoder_i.shape)
+				loss = loss_fun(out.float(), decoder_i.long() )
 				running_loss += loss.item() * N
 				
 				total += N
