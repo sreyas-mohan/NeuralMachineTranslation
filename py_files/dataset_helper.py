@@ -32,15 +32,16 @@ class Lang:
 			self.addWord( word.lower() )
 
 	def addWord(self, word):
-		if word not in self.word2index:
+		if word not in self.word2count.keys():
 			self.word2count[word] = 1
 		else:
 			self.word2count[word] += 1
-
-		if ( (self.word2count[word] >= self.minimum_count) and (word not in self.word2index) ):
-			self.word2index[word] = self.n_words
-			self.index2word.append(word)
-			self.n_words += 1
+			
+		if self.word2count[word] >= self.minimum_count:
+			if word not in self.index2word:
+				self.word2index[word] = self.n_words
+				self.index2word.append(word)
+				self.n_words += 1
 
 
 
@@ -77,13 +78,16 @@ def load_or_create_language_obj(source_name, source_lang_obj_path, source_data, 
 	if not os.path.exists(source_lang_obj_path):
 		os.makedirs(source_lang_obj_path)
 	
-	full_file_path = os.path.join(source_lang_obj_path, source_name+'_lang_obj+'+'min_count_'+str(minimum_count)'.p')
+	full_file_path = os.path.join(source_lang_obj_path, source_name+'_lang_obj_'+'min_count_'+str(minimum_count)+'.p')
 	
 	if os.path.isfile(full_file_path):
 		source_lang_obj = pickle.load( open( full_file_path, "rb" ) );
 	else:
-		source_lang_obj = Lang(source_name);
-		for line in source_data:
+		source_lang_obj = Lang(source_name, minimum_count);
+		for i, line in enumerate(source_data):
+# 			if i%10000 == 0:
+# 				print(i, len(source_data))
+# 				print(str(float(i/len(source_data))*100)+' done');
 			source_lang_obj.addSentence(line);
 		pickle.dump( source_lang_obj, open(full_file_path , "wb" ) )
 		

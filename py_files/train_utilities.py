@@ -1,6 +1,7 @@
 import torch
 import time
 import random
+import errno
 
 import global_variables
 from bleu_score import BLEU_SCORE
@@ -13,6 +14,14 @@ PAD_IDX = global_variables.PAD_IDX
 
 device = global_variables.device;
 
+def make_sure_path_exists(path):
+    try:
+        os.makedirs(path)
+    except OSError as exception:
+        if exception.errno != errno.EEXIST:
+            raise
+			
+			
 def convert_id_list_2_sent(list_idx, lang_obj):
     word_list = []
     if type(list_idx) == list:
@@ -26,7 +35,7 @@ def convert_id_list_2_sent(list_idx, lang_obj):
     return (' ').join(word_list)
 
 
-def validation_function(encoder, decoder, val_dataloader, lang_en,m_type, verbose = False):
+def validation_function(encoder, decoder, val_dataloader, lang_en, m_type, verbose = False):
 	encoder.eval()
 	decoder.eval()
 	pred_corpus = []
