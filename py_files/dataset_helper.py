@@ -72,12 +72,12 @@ def token2index_dataset(df, source_lang_obj, target_lang_obj):
 		
 	return df
 
-def load_or_create_language_obj(source_name, source_lang_obj_path, source_data):
+def load_or_create_language_obj(source_name, source_lang_obj_path, source_data, minimum_count):
 	
 	if not os.path.exists(source_lang_obj_path):
 		os.makedirs(source_lang_obj_path)
 	
-	full_file_path = os.path.join(source_lang_obj_path, source_name+'_lang_obj.p')
+	full_file_path = os.path.join(source_lang_obj_path, source_name+'_lang_obj+'+'min_count_'+str(minimum_count)'.p')
 	
 	if os.path.isfile(full_file_path):
 		source_lang_obj = pickle.load( open( full_file_path, "rb" ) );
@@ -91,7 +91,7 @@ def load_or_create_language_obj(source_name, source_lang_obj_path, source_data):
 
 
 def load_language_pairs(source_path, target_path, source_name = 'en', target_name = 'vi',
-						lang_obj_path = '.'):
+						lang_obj_path = '.',  minimum_count = 5):
 	source = read_dataset(source_path);
 	target = read_dataset(target_path);
 	
@@ -99,8 +99,8 @@ def load_language_pairs(source_path, target_path, source_name = 'en', target_nam
 	main_df['source_data'] = source['data'];
 	main_df['target_data'] = target['data'];
 	
-	source_lang_obj = load_or_create_language_obj(source_name, lang_obj_path, main_df['source_data']);
-	target_lang_obj = load_or_create_language_obj(target_name, lang_obj_path, main_df['target_data']);
+	source_lang_obj = load_or_create_language_obj(source_name, lang_obj_path, main_df['source_data'], minimum_count);
+	target_lang_obj = load_or_create_language_obj(target_name, lang_obj_path, main_df['target_data'], minimum_count);
 	
 	for x in ['source', 'target']:
 		main_df[x+'_tokenized'] = main_df[x + "_data"].apply(lambda x:x.lower().split() );
@@ -118,14 +118,15 @@ def load_language_pairs(source_path, target_path, source_name = 'en', target_nam
 
 class LanguagePair(Dataset):
 	def __init__(self, source_name, target_name, source_path, target_path, 
-					lang_obj_path, val = False):
+					lang_obj_path, val = False, minimum_count = 5):
 		
 		self.source_name = source_name;
 		self.target_name = target_name;
 		self.val = val;
-		
+		self.minimum_count = minimum_count;
+
 		self.main_df, self.source_lang_obj, self.target_lang_obj = load_language_pairs(source_path, target_path, 
-																			  source_name, target_name, lang_obj_path);
+																			  source_name, target_name, lang_obj_path, minimum_count);
 		
 	def __len__(self):
 		return len( self.main_df )
