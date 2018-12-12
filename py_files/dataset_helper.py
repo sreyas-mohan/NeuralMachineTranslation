@@ -14,7 +14,7 @@ PAD_IDX = global_variables.PAD_IDX
 
 
 class Lang:
-	def __init__(self, name):
+	def __init__(self, name, minimum_count = 5):
 		self.name = name
 		self.word2index = {}
 		self.word2count = {}
@@ -25,18 +25,23 @@ class Lang:
 		self.index2word[PAD_IDX] = 'PAD'
 		self.n_words = 4  # Count SOS and EOS
 
+		self.minimum_count = minimum_count;
+
 	def addSentence(self, sentence):
 		for word in sentence.split(' '):
-			self.addWord(word)
+			self.addWord( word.lower() )
 
 	def addWord(self, word):
 		if word not in self.word2index:
-			self.word2index[word] = self.n_words
 			self.word2count[word] = 1
-			self.index2word.append(word)
-			self.n_words += 1
 		else:
 			self.word2count[word] += 1
+
+		if ( (self.word2count[word] >= self.minimum_count) and (word not in self.word2index) ):
+			self.word2index[word] = self.n_words
+			self.index2word.append(word)
+			self.n_words += 1
+
 
 
 def read_dataset(file):
