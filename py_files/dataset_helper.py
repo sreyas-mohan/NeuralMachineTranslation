@@ -122,7 +122,7 @@ def load_language_pairs(source_path, target_path, source_name = 'en', target_nam
 
 class LanguagePair(Dataset):
 	def __init__(self, source_name, target_name, source_path, target_path, 
-					lang_obj_path, val = False, minimum_count = 5):
+					lang_obj_path, val = False, minimum_count = 5, max_num = None):
 		
 		self.source_name = source_name;
 		self.target_name = target_name;
@@ -131,9 +131,11 @@ class LanguagePair(Dataset):
 
 		self.main_df, self.source_lang_obj, self.target_lang_obj = load_language_pairs(source_path, target_path, 
 																			  source_name, target_name, lang_obj_path, minimum_count);
+
+		self.max_num = max_num;
 		
 	def __len__(self):
-		return len( self.main_df )
+		return len( self.main_df ) if self.max_num is None else self.max_num
 	
 	def __getitem__(self, idx):
 		

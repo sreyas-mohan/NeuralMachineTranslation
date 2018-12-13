@@ -88,7 +88,17 @@ class EncoderRNN(nn.Module):
 
 		if self.rnn_type == 'gru':
 			hidden =  self.initHidden(bs)
-			output, hidden = self.rnn(output, hidden)
+
+			sorted_output = output[sorted_idx]
+			sorted_len = src_len[sorted_idx]
+
+			packed_output = nn.utils.rnn.pack_padded_sequence(sorted_output, sorted_len.data.tolist(), batch_first = True)
+			packed_outs, hidden = self.rnn(packed_output, hidden)
+			hidden = hidden[:,orig_idx,:]
+
+			output, _ = nn.utils.rnn.pad_packed_sequence(packed_outs, padding_value=PAD_IDX, batch_first = True)
+			output = output[orig_idx]
+
 		elif self.rnn_type == 'lstm':
 			hidden, c = self.initHidden(bs)
 			sorted_output = output[sorted_idx]
@@ -102,14 +112,19 @@ class EncoderRNN(nn.Module):
 			output = output[orig_idx]
 
 		hidden = hidden.view(self.rnn_layers, 2, bs, -1).transpose(1, 2).contiguous().view(self.rnn_layers, bs, -1)
-		c = c.view(self.rnn_layers, 2, bs, -1).transpose(1, 2).contiguous().view(self.rnn_layers, bs, -1)
+
+		if self.rnn_type == 'lstm':
+			c = c.view(self.rnn_layers, 2, bs, -1).transpose(1, 2).contiguous().view(self.rnn_layers, bs, -1)
+		elif self.rnn_type == 'gru':
+			c = torch.zeros_like(hidden);
+
 		return output, hidden, c
 
 	def initHidden(self,bs):
 		if self.rnn_type == 'gru' :
 			return torch.zeros(self.rnn_layers*2, bs, self.hidden_size).to(device)
 		elif self.rnn_type == 'lstm':
-			return torch.zeros(self.rnn_layers*2,bs,self.hidden_size).to(device),torch.zeros(self.rnn_layers*2,bs,self.hidden_size).to(device)
+			return torch.zeros(self.rnn_layers*2, bs,self.hidden_size).to(device), torch.zeros(self.rnn_layers*2,bs,self.hidden_size).to(device)
 
 
 class Attention_Module(nn.Module):
