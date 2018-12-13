@@ -155,8 +155,8 @@ def train_model(encoder_optimizer, decoder_optimizer, encoder, decoder, loss_fun
 	best_bleu = -1
 	loss_hist = {'train': [], 'val': []}
 	bleu_hist = {'train': [], 'val': []}
-	best_encoder_wts = None
-	best_decoder_wts = None
+	best_encoder_wts = encoder.state_dict()
+	best_decoder_wts = decoder.state_dict()
 
 	if attention:
 		assert( decoder.att_layer is not None)
