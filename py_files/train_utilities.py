@@ -2,6 +2,7 @@ import torch
 import time
 import random
 import errno
+import sys
 
 import global_variables
 from bleu_score import BLEU_SCORE
@@ -150,8 +151,8 @@ def train_model(encoder_optimizer, decoder_optimizer, encoder, decoder, loss_fun
 				num_epochs=60, val_every = 1, train_bleu_every = 10, clip = 0.1, rm = 0.8, enc_scheduler = None,\
 			   dec_scheduler = None):
 
-	best_score = 0
-	best_bleu = 0
+
+	best_bleu = -1
 	loss_hist = {'train': [], 'val': []}
 	bleu_hist = {'train': [], 'val': []}
 	best_encoder_wts = None
@@ -213,6 +214,7 @@ def train_model(encoder_optimizer, decoder_optimizer, encoder, decoder, loss_fun
 			loss_hist[phase].append(epoch_loss)
 			print("epoch {} {} loss = {}, time = {}".format(epoch, phase, epoch_loss,
 																		   time.time() - start))
+			sys.stdout.flush()
 		if (enc_scheduler is not None) and (dec_scheduler is not None):
 			enc_scheduler.step(epoch_loss)
 			dec_scheduler.step(epoch_loss)
