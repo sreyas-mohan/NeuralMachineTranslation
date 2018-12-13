@@ -35,7 +35,7 @@ def convert_id_list_2_sent(list_idx, lang_obj):
     return (' ').join(word_list)
 
 
-def validation_function(encoder, decoder, val_dataloader, lang_en, m_type, verbose = False):
+def validation_function(encoder, decoder, val_dataloader, lang_en,  verbose = False):
 	encoder.eval()
 	decoder.eval()
 	pred_corpus = []
@@ -146,7 +146,7 @@ def encode_decode(encoder, decoder, data_en, data_de,
 
 
 
-def train_model(encoder_optimizer, decoder_optimizer, encoder, decoder, loss_fun,m_type, dataloader, en_lang,\
+def train_model(encoder_optimizer, decoder_optimizer, encoder, decoder, loss_fun, attention,  dataloader, en_lang,\
 				num_epochs=60, val_every = 1, train_bleu_every = 10, clip = 0.1, rm = 0.8, enc_scheduler = None,\
 			   dec_scheduler = None):
 
@@ -156,6 +156,11 @@ def train_model(encoder_optimizer, decoder_optimizer, encoder, decoder, loss_fun
 	bleu_hist = {'train': [], 'val': []}
 	best_encoder_wts = None
 	best_decoder_wts = None
+
+	if attention:
+		assert( decoder.att_layer is not None)
+	else:
+		assert( decoder.att_layer is None)
 
 	phases = ['train','val']
 
@@ -185,9 +190,9 @@ def train_model(encoder_optimizer, decoder_optimizer, encoder, decoder, loss_fun
 				tar_len = data[3].to(device)
 
 				if phase == 'val':                
-					out = encode_decode(encoder,decoder,encoder_i,decoder_i,src_len,tar_len, rand_num=rm, val = True )
+					out = encode_decode(encoder, decoder, encoder_i,decoder_i,src_len,tar_len, rand_num=rm, val = True )
 				else:
-					out = encode_decode(encoder,decoder,encoder_i,decoder_i,src_len,tar_len, rand_num=rm, val = False )
+					out = encode_decode(encoder, decoder, encoder_i,decoder_i,src_len,tar_len, rand_num=rm, val = False )
 					
 				N = decoder_i.size(0)
 
@@ -213,7 +218,7 @@ def train_model(encoder_optimizer, decoder_optimizer, encoder, decoder, loss_fun
 			dec_scheduler.step(epoch_loss)
 
 		if epoch%val_every == 0:
-			val_bleu_score = validation_function(encoder,decoder, dataloader['val'], en_lang, m_type)
+			val_bleu_score = validation_function(encoder,decoder, dataloader['val'], en_lang)
 			bleu_hist['val'].append(val_bleu_score)
 			print("validation BLEU = ", val_bleu_score)
 			if val_bleu_score > best_bleu:

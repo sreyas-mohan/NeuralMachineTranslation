@@ -152,15 +152,17 @@ class Attention_Module(nn.Module):
 		return x, attn_scores
 
 
-class AttentionDecoderRNN(nn.Module):
+class DecoderRNN(nn.Module):
 	def __init__(self, output_size, embed_dim, hidden_size, n_layers = 1, attention = True):
-		super(AttentionDecoderRNN, self).__init__()
+		super(DecoderRNN, self).__init__()
 		self.hidden_size = hidden_size
 		encoder_output_size = hidden_size
 		self.embedding = Embedding(output_size, embed_dim, PAD_IDX)
 		self.dropout = nn.Dropout(p=0.1)
 		self.n_layers = n_layers
+
 		self.att_layer = Attention_Module(self.hidden_size, encoder_output_size) if attention else None
+
 		self.layers = nn.ModuleList([
 			LSTMCell(
 				input_size=self.hidden_size + embed_dim if ((layer == 0) and attention) else embed_dim if layer == 0 else hidden_size,
