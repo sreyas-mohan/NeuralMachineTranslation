@@ -3,6 +3,8 @@ import time
 import random
 import errno
 import sys
+import copy
+import numpy as np
 
 import global_variables
 from bleu_score import BLEU_SCORE
