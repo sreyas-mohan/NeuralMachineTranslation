@@ -1,9 +1,9 @@
 #!/bin/bash
-#SBATCH --job-name=vi-gru-a
 #SBATCH --nodes=1
-#SBATCH --mem=50GB
-#SBATCH --time=49:59:59
-#SBATCH --gres=gpu:p40:1
+#SBATCH --gres=gpu:1080ti:1
+#SBATCH --job-name=vi_gru_a
+#SBATCH --time=48:00:00
+#SBATCH --mem=60GB
 
 
 module purge
@@ -15,5 +15,5 @@ module purge
 #source activate denoising
 #which python
 #export PYTHONPATH=$PYTHONPATH:/home/sm7582/.conda/envs/denoising/bin/python
-which python
-python vi2en_gru_withattention.py
+# which python
+srun python vi2en_gru_withattention.py >>vi2en_gru_withattention.log 2>&1
