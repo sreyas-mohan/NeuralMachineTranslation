@@ -16,27 +16,27 @@ PAD_IDX = global_variables.PAD_IDX
 device = global_variables.device;
 
 def make_sure_path_exists(path):
-    try:
-        os.makedirs(path)
-    except OSError as exception:
-        if exception.errno != errno.EEXIST:
-            raise
+	try:
+		os.makedirs(path)
+	except OSError as exception:
+		if exception.errno != errno.EEXIST:
+			raise
 			
 			
 def convert_id_list_2_sent(list_idx, lang_obj):
-    word_list = []
-    if type(list_idx) == list:
-        for i in list_idx:
-            if i not in set([EOS_token]):
-                word_list.append(lang_obj.index2word[i])
-    else:
-        for i in list_idx:
-            if i.item() not in set([EOS_token,SOS_token,PAD_IDX]):
-                word_list.append(lang_obj.index2word[i.item()])
-    return (' ').join(word_list)
+	word_list = []
+	if type(list_idx) == list:
+		for i in list_idx:
+			if i not in set([EOS_token]):
+				word_list.append(lang_obj.index2word[i])
+	else:
+		for i in list_idx:
+			if i.item() not in set([EOS_token,SOS_token,PAD_IDX]):
+				word_list.append(lang_obj.index2word[i.item()])
+	return (' ').join(word_list)
 
 
-def validation_function(encoder, decoder, val_dataloader, lang_en,  verbose = False):
+def validation_function(encoder, decoder, val_dataloader, lang_en,  verbose = False, keep_unk = False):
 	encoder.eval()
 	decoder.eval()
 	pred_corpus = []
@@ -66,7 +66,110 @@ def validation_function(encoder, decoder, val_dataloader, lang_en,  verbose = Fa
 			if topi.item() == EOS_token:
 				break
 		
-		true_corpus.append(data[-1])
+		if keep_unk:
+			true_sent = convert_id_list_2_sent(data[1][0],lang_en)
+			true_corpus.append(true_sent)
+		else:
+			true_corpus.append(data[-1])
+
+		pred_sent = convert_id_list_2_sent(d_out,lang_en)
+		pred_corpus.append(pred_sent)
+		if verbose:
+			print("True Sentence:",data[-1])
+			print("Pred Sentence:", pred_sent)
+			print('-*'*50)
+	score = bl.corpus_bleu(pred_corpus,[true_corpus],lowercase=True)[0]
+
+	return score
+
+
+def validation_beam_search(encoder, decoder, val_dataloader,lang_en,beam_size, verbose = False,
+						   keep_unk = False):
+	encoder.eval()
+	decoder.eval()
+	encoder = encoder.to(device)
+	decoder = decoder.to(device)
+	pred_corpus = []
+	true_corpus = []
+	running_loss = 0
+	running_total = 0
+	bl = BLEU_SCORE()
+
+	j = 0
+	for data in val_dataloader:
+
+		encoder_i = data[0].to(device)
+		src_len = data[2].to(device)
+		bs,sl = encoder_i.size()[:2]
+		en_out,en_hid,en_c = encoder(encoder_i,src_len)
+		max_src_len_batch = max(src_len).item()
+		prev_hiddens = en_hid
+		prev_cs = en_c
+		decoder_input = torch.tensor([[SOS_token]]*bs).to(device)
+		prev_output = torch.zeros((bs, en_out.size(-1))).to(device)
+		list_decoder_input = [None]*beam_size
+		beam_stop_flags = [False]*beam_size
+		beam_score = torch.zeros((bs,beam_size)).to(device)
+		list_d_outs = [[] for _ in range(beam_size)]
+		select_beam_size = beam_size
+		for i in range(sl+20):
+			if i == 0:
+				out_vocab, prev_output,prev_hiddens, prev_cs, attention_score = decoder(decoder_input,prev_output, \
+																					prev_hiddens,prev_cs, en_out,\
+																					src_len)
+				bss, vocab_size = out_vocab.size()
+				topv, topi = out_vocab.topk(beam_size)
+				list_prev_output = [prev_output]*beam_size
+				list_prev_hiddens = [prev_hiddens]*beam_size
+				list_prev_cs = [prev_cs]*beam_size
+				for b in range(beam_size):
+					beam_score[0][b] = topv[0][b].item()
+					list_decoder_input[b] = topi[0][b].squeeze().detach().view(-1,1)
+					list_d_outs[b].append(topi[0][b].item())
+					if topi[0][b].item() == EOS_token:
+						beam_stop_flags[b] = True
+			else:
+				beam_out_vocab = [None]*beam_size
+				temp_out = [None]*beam_size
+				temp_hid = [None]*beam_size
+				temp_c = [None]*beam_size
+				prev_d_outs = copy.deepcopy(list_d_outs)
+				for b in range(beam_size):
+					if not beam_stop_flags[b]:
+						beam_out_vocab[b], temp_out[b], temp_hid[b], temp_c[b], attention_score =\
+							decoder(list_decoder_input[b],list_prev_output[b],list_prev_hiddens[b],list_prev_cs[b],\
+									en_out,src_len)
+						beam_out_vocab[b] = beam_out_vocab[b] + beam_score[0][b]
+					if beam_stop_flags[b]:
+						beam_out_vocab[b] = torch.zeros(bss,vocab_size).fill_(float('-inf')).to(device)
+				beam_out_vocab = torch.cat(beam_out_vocab,dim = 1)
+				
+				topv, topi = beam_out_vocab.topk(beam_size)
+				id_for_hid = topi//vocab_size
+				topi_idx = topi%vocab_size
+				for b in range(beam_size):
+					if not beam_stop_flags[b]:
+						beam_score[0][b] = topv[0][b].item()
+						list_decoder_input[b] = topi_idx[0][b].squeeze().detach().view(-1,1)
+						list_d_outs[b] = copy.deepcopy(prev_d_outs[id_for_hid[0][b]])
+						list_d_outs[b].append(topi_idx[0][b].item())
+						if topi_idx[0][b].item() == EOS_token:
+							beam_stop_flags[b] = True
+						else:
+							list_prev_output[b] = temp_out[id_for_hid[0][b]]
+							list_prev_hiddens[b] = temp_hid[id_for_hid[0][b]]
+							list_prev_cs[b] = temp_c[id_for_hid[0][b]]
+				if all(beam_stop_flags):
+					break
+		id_max_score = np.argmax(beam_score)
+		d_out = list_d_outs[id_max_score]
+		
+		if keep_unk:
+			true_sent = convert_id_list_2_sent(data[1][0],lang_en)
+			true_corpus.append(true_sent)
+		else:
+			true_corpus.append(data[-1])
+
 		pred_sent = convert_id_list_2_sent(d_out,lang_en)
 		pred_corpus.append(pred_sent)
 		if verbose:
