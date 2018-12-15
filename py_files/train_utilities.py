@@ -38,7 +38,7 @@ def convert_id_list_2_sent(list_idx, lang_obj):
 	return (' ').join(word_list)
 
 
-def validation_function(encoder, decoder, val_dataloader, lang_en,  verbose = False, keep_unk = False):
+def validation_function(encoder, decoder, val_dataloader, lang_en,  verbose = False, keep_unk = False, return_attention = False):
 	encoder.eval()
 	decoder.eval()
 	pred_corpus = []
@@ -46,6 +46,7 @@ def validation_function(encoder, decoder, val_dataloader, lang_en,  verbose = Fa
 	running_loss = 0
 	running_total = 0
 	bl = BLEU_SCORE()
+	attention_scores_for_all_val = []
 	for data in val_dataloader:
 		encoder_i = data[0].to(device)
 		src_len = data[2].to(device)
@@ -57,6 +58,9 @@ def validation_function(encoder, decoder, val_dataloader, lang_en,  verbose = Fa
 		decoder_input = torch.tensor([[SOS_token]]*bs).to(device)
 		prev_output = torch.zeros((bs, en_out.size(-1))).to(device)
 		d_out = []
+		
+		attention_scores = []
+		
 		for i in range(sl*2):
 			out_vocab, prev_output,prev_hiddens, prev_cs, attention_score = decoder(decoder_input,prev_output, \
 																					prev_hiddens,prev_cs, en_out,\
@@ -65,6 +69,9 @@ def validation_function(encoder, decoder, val_dataloader, lang_en,  verbose = Fa
 #             decoder_input = topi.squeeze().detach().view(-1,1)
 			d_out.append(topi.item())
 			decoder_input = topi.squeeze().detach().view(-1,1)
+		
+			if decoder.att_layer is not None and return_attention:
+				attention_scores.append(attention_score.unsqueeze(-1))
 			if topi.item() == EOS_token:
 				break
 		
@@ -76,17 +83,25 @@ def validation_function(encoder, decoder, val_dataloader, lang_en,  verbose = Fa
 
 		pred_sent = convert_id_list_2_sent(d_out,lang_en)
 		pred_corpus.append(pred_sent)
+		
+		if decoder.att_layer is not None and return_attention:
+			attention_scores = torch.cat(attention_scores, dim = -1)
+			attention_scores_for_all_val.append(attention_scores)
+			
 		if verbose:
 			print("True Sentence:",data[-1])
 			print("Pred Sentence:", pred_sent)
 			print('-*'*50)
 	score = bl.corpus_bleu(pred_corpus,[true_corpus],lowercase=True)[0]
 
+	if decoder.att_layer is not None and return_attention:
+		return score, true_corpus, pred_corpus, attention_scores_for_all_val
+	
 	return score
 
 
 def validation_beam_search(encoder, decoder, val_dataloader,lang_en,beam_size, verbose = False,
-						   keep_unk = False):
+						   keep_unk = False, return_attention = False):
 	encoder.eval()
 	decoder.eval()
 	encoder = encoder.to(device)
@@ -96,7 +111,9 @@ def validation_beam_search(encoder, decoder, val_dataloader,lang_en,beam_size, v
 	running_loss = 0
 	running_total = 0
 	bl = BLEU_SCORE()
-
+	
+	attention_scores_for_all_val = []
+	
 	j = 0
 	for data in val_dataloader:
 
@@ -114,6 +131,9 @@ def validation_beam_search(encoder, decoder, val_dataloader,lang_en,beam_size, v
 		beam_score = torch.zeros((bs,beam_size)).to(device)
 		list_d_outs = [[] for _ in range(beam_size)]
 		select_beam_size = beam_size
+		
+		attention_scores = [[] for _ in range(beam_size)]
+		
 		for i in range(sl+20):
 			if i == 0:
 				out_vocab, prev_output,prev_hiddens, prev_cs, attention_score = decoder(decoder_input,prev_output, \
@@ -128,6 +148,10 @@ def validation_beam_search(encoder, decoder, val_dataloader,lang_en,beam_size, v
 					beam_score[0][b] = topv[0][b].item()
 					list_decoder_input[b] = topi[0][b].squeeze().detach().view(-1,1)
 					list_d_outs[b].append(topi[0][b].item())
+					
+					if decoder.att_layer is not None and return_attention:
+						attention_scores[b].append(attention_score.unsqueeze(-1))
+						
 					if topi[0][b].item() == EOS_token:
 						beam_stop_flags[b] = True
 			else:
@@ -174,11 +198,19 @@ def validation_beam_search(encoder, decoder, val_dataloader,lang_en,beam_size, v
 
 		pred_sent = convert_id_list_2_sent(d_out,lang_en)
 		pred_corpus.append(pred_sent)
+		
+		if decoder.att_layer is not None and return_attention:
+			attention_scores = torch.cat(attention_scores, dim = -1)
+			attention_scores_for_all_val.append(attention_scores)
+			
 		if verbose:
 			print("True Sentence:",data[-1])
 			print("Pred Sentence:", pred_sent)
 			print('-*'*50)
 	score = bl.corpus_bleu(pred_corpus,[true_corpus],lowercase=True)[0]
+	
+	if decoder.att_layer is not None and return_attention:
+		return score, true_corpus, pred_corpus, attention_scores_for_all_val
 
 	return score
 
